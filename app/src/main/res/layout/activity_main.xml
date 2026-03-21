@@ -1,0 +1,289 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:fitsSystemWindows="true"
+    android:padding="12dp">
+
+    <!-- 状态与 Token 区域 -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="状态: 未注册"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/tvToken"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:clickable="true"
+                android:focusable="false"
+                android:hint="点击注册获取 Token"
+                android:padding="10dp"
+                android:textSize="12sp" />
+
+            <!-- 新增：展开更多选项按钮 (默认隐藏) -->
+            <Button
+                android:id="@+id/btnToggleOptions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="展开更多选项"
+                android:visibility="gone" />
+
+            <!-- 新增：更多选项容器 (默认隐藏) -->
+            <LinearLayout
+                android:id="@+id/layoutMoreOptions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <!-- 新增的标题与工具栏 -->
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:layout_marginBottom="4dp"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentStart="true"
+                        android:layout_centerInParent="true"
+                        android:text="普通消息"
+                        android:textColor="#333333"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentEnd="true"
+                        android:orientation="horizontal">
+
+                        <!-- 复制按钮 -->
+                        <ImageButton
+                            android:id="@+id/btnCopyAction1"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="复制内容"
+                            android:padding="8dp"
+                            android:scaleType="fitCenter"
+                            android:src="@android:drawable/ic_menu_save"
+                            app:tint="#666666" />
+
+                        <!-- 播放/跳转按钮 -->
+                        <ImageButton
+                            android:id="@+id/btnPlayAction1"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:layout_marginStart="8dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="浏览器打开"
+                            android:padding="6dp"
+                            android:scaleType="fitCenter"
+                            android:src="@android:drawable/ic_media_play"
+                            app:tint="#2196F3" />
+                    </LinearLayout>
+                </RelativeLayout>
+
+                <EditText
+                    android:id="@+id/etExtraInfo1"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:background="@android:drawable/editbox_background"
+                    android:focusable="false"
+                    android:hint="URL(点击复制)"
+                    android:padding="10dp"
+                    android:textSize="12sp" />
+
+                <!-- 新增的标题与工具栏 -->
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:layout_marginBottom="4dp"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentStart="true"
+                        android:layout_centerInParent="true"
+                        android:text="带标题的消息"
+                        android:textColor="#333333"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentEnd="true"
+                        android:orientation="horizontal">
+
+                        <!-- 复制按钮 -->
+                        <ImageButton
+                            android:id="@+id/btnCopyAction2"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="复制内容"
+                            android:padding="8dp"
+                            android:scaleType="fitCenter"
+                            android:src="@android:drawable/ic_menu_save"
+                            app:tint="#666666" />
+
+                        <!-- 播放/跳转按钮 -->
+                        <ImageButton
+                            android:id="@+id/btnPlayAction2"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:layout_marginStart="8dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="浏览器打开"
+                            android:padding="6dp"
+                            android:scaleType="fitCenter"
+                            android:src="@android:drawable/ic_media_play"
+                            app:tint="#2196F3" />
+                    </LinearLayout>
+                </RelativeLayout>
+
+                <EditText
+                    android:id="@+id/etExtraInfo2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:background="@android:drawable/editbox_background"
+                    android:focusable="false"
+                    android:hint="URL(点击复制)"
+                    android:padding="10dp"
+                    android:textSize="12sp" />
+
+                <!-- 新增的标题与工具栏 -->
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:layout_marginBottom="4dp"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentStart="true"
+                        android:layout_centerInParent="true"
+                        android:text="带分组和优先级的消息 (high / default / low)"
+                        android:textColor="#333333"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentEnd="true"
+                        android:orientation="horizontal">
+
+                        <!-- 复制按钮 -->
+                        <ImageButton
+                            android:id="@+id/btnCopyAction3"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="复制内容"
+                            android:padding="8dp"
+                            android:scaleType="fitCenter"
+                            android:src="@android:drawable/ic_menu_save"
+                            app:tint="#666666" />
+
+                        <!-- 播放/跳转按钮 -->
+                        <ImageButton
+                            android:id="@+id/btnPlayAction3"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:layout_marginStart="8dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="浏览器打开"
+                            android:padding="6dp"
+                            android:scaleType="fitCenter"
+                            android:src="@android:drawable/ic_media_play"
+                            app:tint="#2196F3" />
+                    </LinearLayout>
+                </RelativeLayout>
+
+                <EditText
+                    android:id="@+id/etExtraInfo3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:background="@android:drawable/editbox_background"
+                    android:focusable="false"
+                    android:hint="额外信息 3 (点击复制)"
+                    android:padding="10dp"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- 注册按钮 -->
+            <Button
+                android:id="@+id/btnRegister"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="获取注册 Token" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- 消息列表区域 (高度设为0dp, weight为1以撑满剩余空间) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:padding="12dp">
+        <!-- 消息列表标题 -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="收到的消息"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+            <Button
+                android:id="@+id/btnClear"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:text="清空"
+                android:textColor="#666666"
+                android:textSize="14sp" />
+        </RelativeLayout>
+
+        <!-- 消息列表 -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvMessages"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </LinearLayout>
+
+</LinearLayout>

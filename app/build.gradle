@@ -1,0 +1,46 @@
+plugins {
+    id 'com.android.application'
+    id 'com.google.gms.google-services'
+}
+
+android {
+    namespace 'com.xmhzj.fcmpush'
+    compileSdk 36 // 匹配你要求的 SDK 36
+
+    defaultConfig {
+        applicationId "com.xmhzj.fcmpush"
+        minSdk 24
+        targetSdk 36
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    // 添加下面这段代码
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
+
+dependencies {
+    implementation libs.recyclerview
+    implementation libs.appcompat.v170
+    implementation libs.material.v1120
+    implementation libs.constraintlayout.v220
+
+    // FCM 依赖
+    implementation platform(libs.firebase.bom)
+    implementation libs.firebase.messaging
+
+    implementation libs.gson
+}

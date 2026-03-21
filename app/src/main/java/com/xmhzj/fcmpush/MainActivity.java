@@ -1,0 +1,520 @@
+package com.xmhzj.fcmpush;
+
+import android.Manifest;
+import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.drawable.Drawable;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ImageButton;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+import androidx.recyclerview.widget.ItemTouchHelper;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.google.android.material.snackbar.Snackbar;
+import com.google.firebase.messaging.FirebaseMessaging;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class MainActivity extends AppCompatActivity {
+
+    private TextView tvStatus, tvToken;
+    private Button btnRegister, btnClear, btnToggleOptions;
+    private LinearLayout layoutMoreOptions;
+    private EditText etExtraInfo1, etExtraInfo2, etExtraInfo3;
+    private RecyclerView rvMessages;
+    private MessageAdapter adapter;
+    private List<MessageModel> messageList = new ArrayList<>();
+    private SharedPreferences sp;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+
+        sp = getSharedPreferences("FCM_CONFIG", MODE_PRIVATE);
+        initViews();
+        loadData();
+        checkPermission();
+
+        // 注册广播监听新消息
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            registerReceiver(messageReceiver, new IntentFilter("com.xmhzj.NEW_MESSAGE"),
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? RECEIVER_EXPORTED : 0);
+        }
+    }
+
+    // 这是 Activity 里的方法
+    private void handleDelete(int position) {
+        if (position == RecyclerView.NO_POSITION) return;
+
+        // 1. 备份数据用于撤销
+        final MessageModel deletedMessage = messageList.get(position);
+        final int deletedPosition = position;
+
+        // 2. 从集合移除并通知适配器刷新
+        messageList.remove(position);
+        adapter.notifyItemRemoved(position);
+
+        // 3. 弹出撤销提示
+        Snackbar snackbar = Snackbar.make(rvMessages, "已删除消息: " + deletedMessage.title, Snackbar.LENGTH_LONG);
+        snackbar.setAction("撤销", v -> {
+            // 点击撤销：恢复数据
+            messageList.add(deletedPosition, deletedMessage);
+            adapter.notifyItemInserted(deletedPosition);
+            rvMessages.scrollToPosition(deletedPosition);
+        });
+
+        // 4. 监听消失：真正存盘
+        snackbar.addCallback(new Snackbar.Callback() {
+            @Override
+            public void onDismissed(Snackbar transientBottomBar, int event) {
+                if (event != DISMISS_EVENT_ACTION) {
+                    saveMessages(); // 只有不点撤销才保存
+                }
+            }
+        });
+        snackbar.show();
+    }
+
+    private void initViews() {
+        tvStatus = findViewById(R.id.tvStatus);
+        tvToken = findViewById(R.id.tvToken);
+        btnRegister = findViewById(R.id.btnRegister);
+        btnToggleOptions = findViewById(R.id.btnToggleOptions);
+        layoutMoreOptions = findViewById(R.id.layoutMoreOptions);
+
+        btnClear = findViewById(R.id.btnClear);
+        rvMessages = findViewById(R.id.rvMessages);
+
+        ImageButton btnCopyAction1 = findViewById(R.id.btnCopyAction1);
+        ImageButton btnPlayAction1 = findViewById(R.id.btnPlayAction1);
+        etExtraInfo1 = findViewById(R.id.etExtraInfo1);
+
+        ImageButton btnCopyAction2 = findViewById(R.id.btnCopyAction2);
+        ImageButton btnPlayAction2 = findViewById(R.id.btnPlayAction2);
+        etExtraInfo2 = findViewById(R.id.etExtraInfo2);
+
+        ImageButton btnCopyAction3 = findViewById(R.id.btnCopyAction3);
+        ImageButton btnPlayAction3 = findViewById(R.id.btnPlayAction3);
+        etExtraInfo3 = findViewById(R.id.etExtraInfo3);
+
+        rvMessages.setLayoutManager(new LinearLayoutManager(this));
+        adapter = new MessageAdapter();
+        rvMessages.setAdapter(adapter);
+
+        // --- 在这里添加滑动删除绑定 ---
+        ItemTouchHelper itemTouchHelper = new ItemTouchHelper(new ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT) {
+            @Override
+            public boolean onMove(@NonNull RecyclerView rv, @NonNull RecyclerView.ViewHolder vh, @NonNull RecyclerView.ViewHolder target) {
+                return false; // 不处理上下拖动
+            }
+
+            @Override
+            public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {
+                // 滑动成功后调用刚才定义的删除方法
+                int position = viewHolder.getBindingAdapterPosition();
+                handleDelete(position);
+            }
+            @Override
+            public void onChildDraw(@NonNull Canvas c, @NonNull RecyclerView recyclerView,
+                                    @NonNull RecyclerView.ViewHolder viewHolder, float dX, float dY,
+                                    int actionState, boolean isCurrentlyActive) {
+
+                if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE && dX < 0) {
+                    View itemView = viewHolder.itemView;
+
+                    // 1. 计算滑动比例 (0.0 到 1.0)
+                    // 使用滑动距离除以条目宽度。dX 是负数，所以加负号
+                    float swipeProgress = Math.min(1f, -dX / itemView.getWidth());
+
+                    // 2. 绘制渐变红色背景
+                    Paint paint = new Paint();
+                    int redColor = Color.RED;
+                    // 计算透明度：0 (全透明) 到 255 (不透明)
+                    // 乘以 1.5 可以让颜色变红得快一点，增强视觉反馈
+                    int alpha = (int) (Math.min(1f, swipeProgress * 1.5f) * 255);
+                    paint.setColor(redColor);
+                    paint.setAlpha(alpha);
+
+                    // 绘制矩形背景（只覆盖滑动露出来的部分）
+                    c.drawRect((float) itemView.getRight() + dX, (float) itemView.getTop(),
+                            (float) itemView.getRight(), (float) itemView.getBottom(), paint);
+
+                    // 3. 绘制删除图标
+                    Drawable icon = ContextCompat.getDrawable(recyclerView.getContext(), android.R.drawable.ic_menu_delete);
+                    if (icon != null) {
+                        // 设置图标颜色（可选，比如强行设为白色）
+                        icon.setTint(Color.WHITE);
+                        // 图标也随滑动逐渐显现
+                        icon.setAlpha(alpha);
+
+                        int itemHeight = itemView.getBottom() - itemView.getTop();
+                        int intrinsicWidth = icon.getIntrinsicWidth();
+                        int intrinsicHeight = icon.getIntrinsicHeight();
+
+                        // 计算图标位置：居中垂直，并距离右侧有一定间距
+                        int iconMargin = (itemHeight - intrinsicHeight) / 2;
+                        int iconTop = itemView.getTop() + (itemHeight - intrinsicHeight) / 2;
+                        int iconBottom = iconTop + intrinsicHeight;
+
+                        // 图标固定在右侧，或者随滑动移动（这里采用固定在右侧露出部分）
+                        int iconRight = itemView.getRight() - iconMargin;
+                        int iconLeft = itemView.getRight() - iconMargin - intrinsicWidth;
+
+                        icon.setBounds(iconLeft, iconTop, iconRight, iconBottom);
+                        icon.draw(c);
+                    }
+                }
+
+                // 必须调用 super 才能保持正常的滑动动画
+                super.onChildDraw(c, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive);
+            }
+        });
+
+        // 由 ItemTouchHelper 对象调用，传入 RecyclerView
+        itemTouchHelper.attachToRecyclerView(rvMessages);
+
+        // 注册/重新注册按钮
+        btnRegister.setOnClickListener(v -> {
+            // 加载已保存的 Token
+            String savedToken = sp.getString("token", "");
+            if (savedToken.isEmpty()) {
+                doRegister(); // 无Token，执行注册逻辑
+            } else {
+                // 弹出确认对话框
+                new AlertDialog.Builder(this)
+                        .setTitle("刷新 Token")
+                        .setMessage("是否确定要刷新 Token？旧的 Token 将被删除。")
+                        .setPositiveButton("确定", (dialog, which) -> {
+                            doRegister(); // 用户点击确定，执行注册逻辑
+                        })
+                        .setNegativeButton("取消", null) // 点击取消不做任何操作
+                        .show();
+            }
+        });
+
+        // 点击展开/收起按钮的逻辑
+        btnToggleOptions.setOnClickListener(v -> {
+            if (layoutMoreOptions.getVisibility() == View.GONE) {
+                // 展开
+                layoutMoreOptions.setVisibility(View.VISIBLE);
+                btnRegister.setVisibility(View.VISIBLE);
+                btnToggleOptions.setText("点击收起");
+            } else {
+                // 收起
+                layoutMoreOptions.setVisibility(View.GONE);
+                btnRegister.setVisibility(View.GONE);
+                btnToggleOptions.setText("展开更多选项");
+            }
+        });
+
+        View.OnClickListener copyViewListener = v -> {
+            // 尝试从 Tag 中获取完整内容
+            Object tag = v.getTag();
+            String contentToCopy;
+
+            if (tag != null) {
+                contentToCopy = tag.toString(); // 获取完整内容
+            } else {
+                contentToCopy = ((EditText) v).getText().toString(); // 兜底：获取当前显示的文字
+            }
+
+            if (!contentToCopy.isEmpty()) {
+                copyToClipboard(contentToCopy);
+                Toast.makeText(this, "完整内容已复制", Toast.LENGTH_SHORT).show();
+            }
+        };
+
+        // 标题栏右侧的【复制】按钮
+        btnCopyAction1.setOnClickListener(v -> {
+            Object tag = etExtraInfo1.getTag();
+            if (tag != null) {
+                copyToClipboard(tag.toString());
+                Toast.makeText(this, "完整内容已复制", Toast.LENGTH_SHORT).show();
+            }
+        });
+        // 标题栏右侧的【播放】按钮：跳转浏览器发送请求
+        btnPlayAction1.setOnClickListener(v -> {
+            Object tag = etExtraInfo1.getTag();
+            if (tag != null) {
+                try {
+                    String url = tag.toString();
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setData(Uri.parse(url));
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Toast.makeText(this, "无法打开浏览器: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                Toast.makeText(this, "请先获取 Token", Toast.LENGTH_SHORT).show();
+            }
+        });
+        etExtraInfo1.setOnClickListener(copyViewListener);
+
+        // 标题栏右侧的【复制】按钮
+        btnCopyAction2.setOnClickListener(v -> {
+            Object tag = etExtraInfo2.getTag();
+            if (tag != null) {
+                copyToClipboard(tag.toString());
+                Toast.makeText(this, "完整内容已复制", Toast.LENGTH_SHORT).show();
+            }
+        });
+        // 标题栏右侧的【播放】按钮：跳转浏览器发送请求
+        btnPlayAction2.setOnClickListener(v -> {
+            Object tag = etExtraInfo2.getTag();
+            if (tag != null) {
+                try {
+                    String url = tag.toString();
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setData(Uri.parse(url));
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Toast.makeText(this, "无法打开浏览器: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                Toast.makeText(this, "请先获取 Token", Toast.LENGTH_SHORT).show();
+            }
+        });
+        etExtraInfo2.setOnClickListener(copyViewListener);
+
+        // 标题栏右侧的【复制】按钮
+        btnCopyAction3.setOnClickListener(v -> {
+            Object tag = etExtraInfo3.getTag();
+            if (tag != null) {
+                copyToClipboard(tag.toString());
+                Toast.makeText(this, "完整内容已复制", Toast.LENGTH_SHORT).show();
+            }
+        });
+        // 标题栏右侧的【播放】按钮：跳转浏览器发送请求
+        btnPlayAction3.setOnClickListener(v -> {
+            Object tag = etExtraInfo3.getTag();
+            if (tag != null) {
+                try {
+                    String url = tag.toString();
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setData(Uri.parse(url));
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Toast.makeText(this, "无法打开浏览器: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                Toast.makeText(this, "请先获取 Token", Toast.LENGTH_SHORT).show();
+            }
+        });
+        etExtraInfo3.setOnClickListener(copyViewListener);
+
+        // 清空按钮
+        btnClear.setOnClickListener(v -> {
+            // 弹出确认对话框
+            new AlertDialog.Builder(this)
+                    .setTitle("清空消息")
+                    .setMessage("是否确定清空历史消息？")
+                    .setPositiveButton("确定", (dialog, which) -> {
+                        messageList.clear();
+                        saveMessages();
+                        adapter.notifyDataSetChanged();
+                    })
+                    .setNegativeButton("取消", null) // 点击取消不做任何操作
+                    .show();
+        });
+
+        // 复制 Token
+        tvToken.setOnClickListener(v -> {
+            String token = tvToken.getText().toString();
+            if (token.length() > 10) {
+                copyToClipboard(token);
+                Toast.makeText(this, "Token 已复制", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    // 辅助方法：复制文本到剪贴板
+    private void copyToClipboard(String text) {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        ClipData clip = ClipData.newPlainText("label", text);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(clip);
+        }
+    }
+
+    private void loadData() {
+        // 加载已保存的 Token
+        String savedToken = sp.getString("token", "");
+        if (!savedToken.isEmpty()) {
+            showNoticeUrl(savedToken);
+        }
+
+        // 加载已保存的消息
+        String json = sp.getString("messages", "[]");
+        messageList = new Gson().fromJson(json, new TypeToken<List<MessageModel>>() {}.getType());
+        adapter.notifyDataSetChanged();
+    }
+
+    private void showNoticeUrl(String token) {
+        tvStatus.setText("状态: 已注册    Token: (点击复制)");
+        tvToken.setText(token);
+        btnRegister.setText("重新注册 / 刷新 Token");
+        btnRegister.setVisibility(View.GONE);      // 隐藏注册按钮
+        btnToggleOptions.setVisibility(View.VISIBLE); // 显示展开更多按钮
+
+        String shortToken = getShortToken(token);
+        // 1. 显示缩略后的文字
+        etExtraInfo1.setText(String.format("https://fcm.cyf.lol/%s/消息内容", shortToken));
+        etExtraInfo2.setText(String.format("https://fcm.cyf.lol/%s/消息标题/消息内容", shortToken));
+        etExtraInfo3.setText(String.format("https://fcm.cyf.lol/%s/消息标题/消息内容?group=测试&priority=high", shortToken));
+
+        // 2. 将完整的文字保存在 Tag 中（Tag 可以存储任何对象，非常适合存这种隐藏数据）
+        etExtraInfo1.setTag(String.format("https://fcm.cyf.lol/%s/消息内容", token));
+        etExtraInfo2.setTag(String.format("https://fcm.cyf.lol/%s/消息标题/消息内容", token));
+        etExtraInfo3.setTag(String.format("https://fcm.cyf.lol/%s/消息标题/消息内容?group=测试&priority=high", token));
+    }
+
+    // 缩略逻辑：保留前3位和后4位，中间用...代替
+    private String getShortToken(String token) {
+        if (token == null || token.length() <= 10) {
+            return token;
+        }
+        String start = token.substring(0, 3);
+        String end = token.substring(token.length() - 4);
+        return String.format("%s...%s", start, end);
+    }
+
+    private void doRegister() {
+        FirebaseMessaging.getInstance().deleteToken().addOnCompleteListener(t -> {
+            FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
+                if (task.isSuccessful()) {
+                    Toast.makeText(this, "注册成功", Toast.LENGTH_SHORT).show();
+                    String token = task.getResult();
+                    sp.edit().putString("token", token).apply();
+                    showNoticeUrl(token);
+                } else {
+                    Toast.makeText(this, task.getException().getMessage(), Toast.LENGTH_LONG).show();
+                }
+            });
+        });
+    }
+
+    private void saveMessages() {
+        String json = new Gson().toJson(messageList);
+        sp.edit().putString("messages", json).apply();
+    }
+
+    private void checkPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
+        }
+    }
+
+    // 广播接收器：当 Service 收到消息时通知 Activity 刷新
+    private final BroadcastReceiver messageReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            loadData(); // 重新加载数据并刷新列表
+        }
+    };
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        AppConfig.isForeground = true; // 标记在前台
+        loadData();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        AppConfig.isForeground = false; // 标记已离开前台
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unregisterReceiver(messageReceiver);
+    }
+
+    // --- 适配器内部类 ---
+    class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.VH> {
+
+        @NonNull
+        @Override
+        public VH onCreateViewHolder(@NonNull ViewGroup p, int t) {
+            View v = LayoutInflater.from(p.getContext()).inflate(R.layout.item_message, p, false);
+            return new VH(v);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull VH holder, int position) {
+            MessageModel m = messageList.get(position);
+            holder.title.setText(m.title);
+            holder.body.setText(m.body);
+            holder.time.setText(m.time);
+
+            // 点击整个条目显示详情
+            holder.itemView.setOnClickListener(v -> {
+                showDetailDialog(m);
+            });
+        }
+
+        @Override
+        public int getItemCount() {
+            return messageList.size();
+        }
+
+        class VH extends RecyclerView.ViewHolder {
+            TextView title, body, time;
+
+            public VH(View v) {
+                super(v);
+                title = v.findViewById(R.id.itemTitle);
+                body = v.findViewById(R.id.itemBody);
+                time = v.findViewById(R.id.itemTime);
+            }
+        }
+    }
+
+    private void showDetailDialog(MessageModel m) {
+        // 构建详情内容字符串
+        StringBuilder sb = new StringBuilder();
+        sb.append("【内容】").append(m.body).append("\n");
+        sb.append("【分组】").append(m.group != null ? m.group : "default").append("\n");
+        sb.append("【优先级】").append(m.priority != null ? m.priority : "default").append("\n");
+        sb.append("【时间】").append(m.time);
+
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle(m.title)
+                .setMessage(sb.toString())
+                .setPositiveButton("确定", null)
+                .setNeutralButton("复制内容", (dialog, which) -> {
+                    copyToClipboard(m.body);
+                    Toast.makeText(this, "内容已复制", Toast.LENGTH_SHORT).show();
+                })
+                .show();
+    }
+}
