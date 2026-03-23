@@ -111,7 +111,6 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:background="@android:drawable/editbox_background"
-                    android:focusable="false"
                     android:hint="URL(点击复制)"
                     android:padding="10dp"
                     android:textSize="12sp" />
@@ -173,7 +172,6 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:background="@android:drawable/editbox_background"
-                    android:focusable="false"
                     android:hint="URL(点击复制)"
                     android:padding="10dp"
                     android:textSize="12sp" />
@@ -235,7 +233,6 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:background="@android:drawable/editbox_background"
-                    android:focusable="false"
                     android:hint="额外信息 3 (点击复制)"
                     android:padding="10dp"
                     android:textSize="12sp" />

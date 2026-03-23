@@ -235,37 +235,23 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        View.OnClickListener copyViewListener = v -> {
-            // 尝试从 Tag 中获取完整内容
-            Object tag = v.getTag();
-            String contentToCopy;
-
-            if (tag != null) {
-                contentToCopy = tag.toString(); // 获取完整内容
-            } else {
-                contentToCopy = ((EditText) v).getText().toString(); // 兜底：获取当前显示的文字
-            }
-
-            if (!contentToCopy.isEmpty()) {
-                copyToClipboard(contentToCopy);
-                Toast.makeText(this, "完整内容已复制", Toast.LENGTH_SHORT).show();
-            }
-        };
-
         // 标题栏右侧的【复制】按钮
         btnCopyAction1.setOnClickListener(v -> {
-            Object tag = etExtraInfo1.getTag();
-            if (tag != null) {
-                copyToClipboard(tag.toString());
+            Object token = etExtraInfo1.getTag();
+            Object text = etExtraInfo1.getText();
+            if (text != null && token != null) {
+                String url = text.toString().replace("{token}", token.toString());
+                copyToClipboard(url);
                 Toast.makeText(this, "完整内容已复制", Toast.LENGTH_SHORT).show();
             }
         });
         // 标题栏右侧的【播放】按钮：跳转浏览器发送请求
         btnPlayAction1.setOnClickListener(v -> {
-            Object tag = etExtraInfo1.getTag();
-            if (tag != null) {
+            Object token = etExtraInfo1.getTag();
+            Object text = etExtraInfo1.getText();
+            if (text != null && token != null) {
                 try {
-                    String url = tag.toString();
+                    String url = text.toString().replace("{token}", token.toString());
                     Intent intent = new Intent(Intent.ACTION_VIEW);
                     intent.setData(Uri.parse(url));
                     startActivity(intent);
@@ -276,22 +262,24 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "请先获取 Token", Toast.LENGTH_SHORT).show();
             }
         });
-        etExtraInfo1.setOnClickListener(copyViewListener);
 
         // 标题栏右侧的【复制】按钮
         btnCopyAction2.setOnClickListener(v -> {
-            Object tag = etExtraInfo2.getTag();
-            if (tag != null) {
-                copyToClipboard(tag.toString());
+            Object token = etExtraInfo2.getTag();
+            Object text = etExtraInfo2.getText();
+            if (text != null && token != null) {
+                String url = text.toString().replace("{token}", token.toString());
+                copyToClipboard(url);
                 Toast.makeText(this, "完整内容已复制", Toast.LENGTH_SHORT).show();
             }
         });
         // 标题栏右侧的【播放】按钮：跳转浏览器发送请求
         btnPlayAction2.setOnClickListener(v -> {
-            Object tag = etExtraInfo2.getTag();
-            if (tag != null) {
+            Object token = etExtraInfo2.getTag();
+            Object text = etExtraInfo2.getText();
+            if (text != null && token != null) {
                 try {
-                    String url = tag.toString();
+                    String url = text.toString().replace("{token}", token.toString());
                     Intent intent = new Intent(Intent.ACTION_VIEW);
                     intent.setData(Uri.parse(url));
                     startActivity(intent);
@@ -302,22 +290,24 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "请先获取 Token", Toast.LENGTH_SHORT).show();
             }
         });
-        etExtraInfo2.setOnClickListener(copyViewListener);
 
         // 标题栏右侧的【复制】按钮
         btnCopyAction3.setOnClickListener(v -> {
-            Object tag = etExtraInfo3.getTag();
-            if (tag != null) {
-                copyToClipboard(tag.toString());
+            Object token = etExtraInfo3.getTag();
+            Object text = etExtraInfo3.getText();
+            if (text != null && token != null) {
+                String url = text.toString().replace("{token}", token.toString());
+                copyToClipboard(url);
                 Toast.makeText(this, "完整内容已复制", Toast.LENGTH_SHORT).show();
             }
         });
         // 标题栏右侧的【播放】按钮：跳转浏览器发送请求
         btnPlayAction3.setOnClickListener(v -> {
-            Object tag = etExtraInfo3.getTag();
-            if (tag != null) {
+            Object token = etExtraInfo3.getTag();
+            Object text = etExtraInfo3.getText();
+            if (text != null && token != null) {
                 try {
-                    String url = tag.toString();
+                    String url = text.toString().replace("{token}", token.toString());
                     Intent intent = new Intent(Intent.ACTION_VIEW);
                     intent.setData(Uri.parse(url));
                     startActivity(intent);
@@ -328,7 +318,6 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "请先获取 Token", Toast.LENGTH_SHORT).show();
             }
         });
-        etExtraInfo3.setOnClickListener(copyViewListener);
 
         // 清空按钮
         btnClear.setOnClickListener(v -> {
@@ -384,26 +373,15 @@ public class MainActivity extends AppCompatActivity {
         btnRegister.setVisibility(View.GONE);      // 隐藏注册按钮
         btnToggleOptions.setVisibility(View.VISIBLE); // 显示展开更多按钮
 
-        String shortToken = getShortToken(token);
         // 1. 显示缩略后的文字
-        etExtraInfo1.setText(String.format("https://fcm.cyf.lol/%s/消息内容", shortToken));
-        etExtraInfo2.setText(String.format("https://fcm.cyf.lol/%s/消息标题/消息内容", shortToken));
-        etExtraInfo3.setText(String.format("https://fcm.cyf.lol/%s/消息标题/消息内容?group=测试&priority=high", shortToken));
+        etExtraInfo1.setText(AppConfig.fcmApiUrl + "/{token}/消息内容");
+        etExtraInfo2.setText(AppConfig.fcmApiUrl + "/{token}/消息标题/消息内容");
+        etExtraInfo3.setText(AppConfig.fcmApiUrl + "/{token}/消息标题/消息内容?group=test&priority=high");
 
         // 2. 将完整的文字保存在 Tag 中（Tag 可以存储任何对象，非常适合存这种隐藏数据）
-        etExtraInfo1.setTag(String.format("https://fcm.cyf.lol/%s/消息内容", token));
-        etExtraInfo2.setTag(String.format("https://fcm.cyf.lol/%s/消息标题/消息内容", token));
-        etExtraInfo3.setTag(String.format("https://fcm.cyf.lol/%s/消息标题/消息内容?group=测试&priority=high", token));
-    }
-
-    // 缩略逻辑：保留前3位和后4位，中间用...代替
-    private String getShortToken(String token) {
-        if (token == null || token.length() <= 10) {
-            return token;
-        }
-        String start = token.substring(0, 3);
-        String end = token.substring(token.length() - 4);
-        return String.format("%s...%s", start, end);
+        etExtraInfo1.setTag(token);
+        etExtraInfo2.setTag(token);
+        etExtraInfo3.setTag(token);
     }
 
     private void doRegister() {
