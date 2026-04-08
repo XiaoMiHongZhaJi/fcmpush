@@ -58,10 +58,16 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
 
-        sp = getSharedPreferences("FCM_CONFIG", MODE_PRIVATE);
+        sp = getSharedPreferences(AppConfig.preferencesName, MODE_PRIVATE);
         initViews();
-        loadData();
         checkPermission();
+
+        String localToken = sp.getString(AppConfig.preferencesToken, null);
+        if (localToken != null) {
+            checkToken();
+            loadMessageList();
+            showNoticeUrl(localToken);
+        }
 
         // 注册广播监听新消息
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -204,7 +210,7 @@ public class MainActivity extends AppCompatActivity {
         // 注册/重新注册按钮
         btnRegister.setOnClickListener(v -> {
             // 加载已保存的 Token
-            String savedToken = sp.getString("token", "");
+            String savedToken = sp.getString(AppConfig.preferencesToken, "");
             if (savedToken.isEmpty()) {
                 doRegister(); // 无Token，执行注册逻辑
             } else {
@@ -213,7 +219,9 @@ public class MainActivity extends AppCompatActivity {
                         .setTitle("刷新 Token")
                         .setMessage("是否确定要刷新 Token？旧的 Token 将被删除。")
                         .setPositiveButton("确定", (dialog, which) -> {
-                            doRegister(); // 用户点击确定，执行注册逻辑
+                            FirebaseMessaging.getInstance().deleteToken().addOnCompleteListener(t -> {
+                                doRegister(); // 用户点击确定，执行注册逻辑
+                            });
                         })
                         .setNegativeButton("取消", null) // 点击取消不做任何操作
                         .show();
@@ -353,15 +361,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void loadData() {
-        // 加载已保存的 Token
-        String savedToken = sp.getString("token", "");
-        if (!savedToken.isEmpty()) {
-            showNoticeUrl(savedToken);
-        }
-
+    private void loadMessageList() {
         // 加载已保存的消息
-        String json = sp.getString("messages", "[]");
+        String json = sp.getString(AppConfig.preferencesMessages, "[]");
         messageList = new Gson().fromJson(json, new TypeToken<List<MessageModel>>() {}.getType());
         adapter.notifyDataSetChanged();
     }
@@ -385,23 +387,21 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void doRegister() {
-        FirebaseMessaging.getInstance().deleteToken().addOnCompleteListener(t -> {
-            FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
-                if (task.isSuccessful()) {
-                    Toast.makeText(this, "注册成功", Toast.LENGTH_SHORT).show();
-                    String token = task.getResult();
-                    sp.edit().putString("token", token).apply();
-                    showNoticeUrl(token);
-                } else {
-                    Toast.makeText(this, task.getException().getMessage(), Toast.LENGTH_LONG).show();
-                }
-            });
+        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
+            if (task.isSuccessful()) {
+                Toast.makeText(this, "注册成功", Toast.LENGTH_SHORT).show();
+                String token = task.getResult();
+                sp.edit().putString(AppConfig.preferencesToken, token).apply();
+                showNoticeUrl(token);
+            } else {
+                Toast.makeText(this, task.getException().getMessage(), Toast.LENGTH_LONG).show();
+            }
         });
     }
 
     private void saveMessages() {
         String json = new Gson().toJson(messageList);
-        sp.edit().putString("messages", json).apply();
+        sp.edit().putString(AppConfig.preferencesMessages, json).apply();
     }
 
     private void checkPermission() {
@@ -414,7 +414,7 @@ public class MainActivity extends AppCompatActivity {
     private final BroadcastReceiver messageReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            loadData(); // 重新加载数据并刷新列表
+            loadMessageList(); // 重新加载数据并刷新列表
         }
     };
 
@@ -422,7 +422,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         AppConfig.isForeground = true; // 标记在前台
-        loadData();
+        loadMessageList();
     }
 
     @Override
@@ -435,6 +435,22 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         unregisterReceiver(messageReceiver);
+    }
+
+    private void checkToken() {
+        String localToken = sp.getString(AppConfig.preferencesToken, null);
+        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
+            if (task.isSuccessful()) {
+                String latestToken = task.getResult();
+
+                if (localToken == null || !localToken.equals(latestToken)) {
+                    // token 已变化（旧的失效）
+                    sp.edit().putString("token", latestToken).apply();
+                    Toast.makeText(this, "Token 已刷新", Toast.LENGTH_SHORT).show();
+                    showNoticeUrl(latestToken);
+                }
+            }
+        });
     }
 
     // --- 适配器内部类 ---
@@ -452,7 +468,7 @@ public class MainActivity extends AppCompatActivity {
             MessageModel m = messageList.get(position);
             holder.title.setText(m.title);
             holder.body.setText(m.body);
-            holder.time.setText(m.time);
+            holder.time.setText(m.sendTime + " → " + m.receivedTime);
 
             // 点击整个条目显示详情
             holder.itemView.setOnClickListener(v -> {
@@ -481,9 +497,16 @@ public class MainActivity extends AppCompatActivity {
         // 构建详情内容字符串
         StringBuilder sb = new StringBuilder();
         sb.append("【内容】").append(m.body).append("\n");
-        sb.append("【分组】").append(m.group != null ? m.group : "default").append("\n");
-        sb.append("【优先级】").append(m.priority != null ? m.priority : "default").append("\n");
-        sb.append("【时间】").append(m.time);
+        sb.append("【发送时间】").append(m.sendTime).append("\n");
+        sb.append("【接收时间】").append(m.receivedTime);
+        if (m.group != null && !m.group.equals("default")) {
+            sb.append("\n");
+            sb.append("【分组】").append(m.group);
+        }
+        if (m.priority != null && !m.priority.equals("default")) {
+            sb.append("\n");
+            sb.append("【优先级】").append(m.group);
+        }
 
         new androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle(m.title)

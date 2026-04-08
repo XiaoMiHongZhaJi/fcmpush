@@ -1,5 +1,6 @@
 package com.xmhzj.fcmpush;
 
+import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -9,6 +10,7 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Build;
 
+import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
 
 import com.google.firebase.messaging.FirebaseMessagingService;
@@ -43,11 +45,12 @@ public class MyFCMService extends FirebaseMessagingService {
         // 1. 解析数据
         String title = remoteMessage.getData().getOrDefault("title", "新消息");
         String body = remoteMessage.getData().getOrDefault("body", "");
+        String sendTime = remoteMessage.getData().getOrDefault("sendTime", "");
         String priority = remoteMessage.getData().getOrDefault("priority", "default");
-        String groupKey = remoteMessage.getData().getOrDefault("group", "default_group");
+        String groupKey = remoteMessage.getData().getOrDefault("group", "default");
 
         // 2. 永久保存到本地
-        saveMessage(title, body, priority, groupKey);
+        saveMessage(title, body, sendTime, priority, groupKey);
 
         // 2. 手动弹出通知（确保后台也能看到）
         showNotification(title, body, priority, groupKey);
@@ -80,20 +83,6 @@ public class MyFCMService extends FirebaseMessagingService {
 
         // 开启倒计时
         sHandler.postDelayed(sExitRunnable, AppConfig.exitDelayMs);
-    }
-
-    private boolean isAppOnForeground() {
-        android.app.ActivityManager activityManager = (android.app.ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
-        List<android.app.ActivityManager.RunningAppProcessInfo> appProcesses = activityManager.getRunningAppProcesses();
-        if (appProcesses == null) return false;
-        String packageName = getPackageName();
-        for (android.app.ActivityManager.RunningAppProcessInfo appProcess : appProcesses) {
-            if (appProcess.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
-                    && appProcess.processName.equals(packageName)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private void showNotification(String title, String body, String priority, String groupKey) {
@@ -155,19 +144,68 @@ public class MyFCMService extends FirebaseMessagingService {
         nm.notify(groupKey.hashCode(), summaryBuilder.build());
     }
 
-    private void saveMessage(String title, String body, String priority, String group) {
-        SharedPreferences sp = getSharedPreferences("FCM_CONFIG", MODE_PRIVATE);
-        String json = sp.getString("messages", "[]");
+    private void saveMessage(String title, String body, String sendTime, String priority, String group) {
+        SharedPreferences sp = getSharedPreferences(AppConfig.preferencesName, MODE_PRIVATE);
+        String json = sp.getString(AppConfig.preferencesMessages, "[]");
         Gson gson = new Gson();
         List<MessageModel> list = gson.fromJson(json, new TypeToken<List<MessageModel>>() {
         }.getType());
 
-        String time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date());
+        SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
+        String receivedTime = simpleDateFormat.format(new Date());
+        sendTime = simpleDateFormat.format(new Date(Long.parseLong(sendTime)));
 
         // 创建包含新字段的模型
-        MessageModel model = new MessageModel(title, body, time, priority, group);
+        MessageModel model = new MessageModel(title, body, sendTime, receivedTime, priority, group);
         list.add(0, model);
 
-        sp.edit().putString("messages", gson.toJson(list)).apply();
+        sp.edit().putString(AppConfig.preferencesMessages, gson.toJson(list)).apply();
+    }
+
+    @Override
+    public void onNewToken(@NonNull String token) {
+        super.onNewToken(token);
+
+        Log.d(TAG, "New token: " + token);
+
+        // 取出旧 token
+        SharedPreferences sp = getSharedPreferences(AppConfig.preferencesName, MODE_PRIVATE);
+        String oldToken = sp.getString(AppConfig.preferencesToken, null);
+
+        // 保存新 token
+        sp.edit().putString(AppConfig.preferencesToken, token).apply();
+
+        // 如果旧 token 存在 且 不一样 → 说明失效了
+        if (oldToken != null && !oldToken.equals(token)) {
+            sendTokenExpiredNotification();
+        }
+    }
+
+    private void sendTokenExpiredNotification() {
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+
+        String channelName = "重要通知";
+        String channelId = channelName.hashCode() + "";
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH);
+            manager.createNotificationChannel(channel);
+        }
+
+        // 点击通知跳转到 MainActivity
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.putExtra("from_notification", true);
+
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        Notification notification = new NotificationCompat.Builder(this, channelId)
+                .setContentTitle("Token 已失效")
+                .setContentText("点击刷新 Token")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .build();
+
+        manager.notify(channelName.hashCode(), notification);
     }
 }
