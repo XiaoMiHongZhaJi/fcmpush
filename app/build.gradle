@@ -13,6 +13,15 @@ android {
         targetSdk 36
         versionCode 1
         versionName "1.0"
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments += [
+                        "room.schemaLocation": "$projectDir/schemas".toString(),
+                        "room.incremental": "true",
+                        "room.expandProjection": "true"
+                ]
+            }
+        }
     }
 
     buildTypes {
@@ -43,4 +52,8 @@ dependencies {
     implementation libs.firebase.messaging
 
     implementation libs.gson
+    implementation libs.room.runtime
+    implementation libs.room.common
+
+    annotationProcessor libs.room.compiler
 }

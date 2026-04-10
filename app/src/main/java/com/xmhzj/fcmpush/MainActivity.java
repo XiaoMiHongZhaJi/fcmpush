@@ -1,6 +1,7 @@
 package com.xmhzj.fcmpush;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -15,6 +16,7 @@ import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -38,8 +40,10 @@ import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -51,6 +55,7 @@ public class MainActivity extends AppCompatActivity {
     private MessageAdapter adapter;
     private List<MessageModel> messageList = new ArrayList<>();
     private SharedPreferences sp;
+    private static final String TAG = "MAIN_DEBUG";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,13 +64,24 @@ public class MainActivity extends AppCompatActivity {
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
 
         sp = getSharedPreferences(AppConfig.preferencesName, MODE_PRIVATE);
-        initViews();
+        initViews(this);
         checkPermission();
+
+        boolean migrated = sp.getBoolean("old_data_migrated", false);
+        if (!migrated) {
+            new Thread(() -> {
+                migrateOldDataIfNeeded(this, sp);
+            }).start();
+
+            Toast.makeText(this, "数据迁移完成，请退出并重新打开", Toast.LENGTH_SHORT).show();
+        }
 
         String localToken = sp.getString(AppConfig.preferencesToken, null);
         if (localToken != null) {
             checkToken();
-            loadMessageList();
+            if (migrated) {
+                loadMessageList();
+            }
             showNoticeUrl(localToken);
         }
 
@@ -76,8 +92,59 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    public void migrateOldDataIfNeeded(Context context, SharedPreferences sp) {
+
+        // 读取旧 JSON 数据
+        String json = sp.getString(AppConfig.preferencesMessages, "[]");
+        Gson gson = new Gson();
+
+        List<MessageModel> oldList = gson.fromJson(json, new TypeToken<List<MessageModel>>(){}.getType());
+        if (oldList == null || oldList.isEmpty()) {
+            sp.edit().putBoolean("old_data_migrated", true).apply();
+            return;
+        }
+
+        AppDatabase db = AppDatabase.getInstance(context);
+        MessageDao dao = db.messageDao();
+
+        for (MessageModel old : oldList) {
+
+            long sendTimestamp = 0;
+            long receivedTimestamp = 0;
+
+            // 如果旧版本没有时间戳，就尝试解析时间字符串
+            try {
+                sendTimestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                        .parse(old.sendTime).getTime();
+            } catch (Exception ignored){}
+
+            if (old.receivedTime != null) {
+                try {
+                    receivedTimestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                            .parse(old.receivedTime).getTime();
+                } catch (Exception ignored){}
+            }
+
+            MessageModel newModel = new MessageModel(
+                    old.title,
+                    old.body,
+                    old.sendTime,
+                    old.receivedTime,
+                    sendTimestamp,
+                    receivedTimestamp,
+                    old.priority,
+                    old.group
+            );
+
+            dao.insert(newModel);
+        }
+
+        // 标记迁移完成
+        sp.edit().putBoolean("old_data_migrated", true).apply();
+    }
+
     // 这是 Activity 里的方法
-    private void handleDelete(int position) {
+    private void handleDelete(Context context, int position) {
         if (position == RecyclerView.NO_POSITION) return;
 
         // 1. 备份数据用于撤销
@@ -102,14 +169,19 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onDismissed(Snackbar transientBottomBar, int event) {
                 if (event != DISMISS_EVENT_ACTION) {
-                    saveMessages(); // 只有不点撤销才保存
+                    // 根据id删除消息
+                    new Thread(() -> {
+                        AppDatabase db = AppDatabase.getInstance(context);
+                        MessageDao dao = db.messageDao();
+                        dao.delete(deletedMessage); // ⭐推荐按ID删
+                    }).start();
                 }
             }
         });
         snackbar.show();
     }
 
-    private void initViews() {
+    private void initViews(Context context) {
         tvStatus = findViewById(R.id.tvStatus);
         tvToken = findViewById(R.id.tvToken);
         btnRegister = findViewById(R.id.btnRegister);
@@ -146,7 +218,7 @@ public class MainActivity extends AppCompatActivity {
             public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {
                 // 滑动成功后调用刚才定义的删除方法
                 int position = viewHolder.getBindingAdapterPosition();
-                handleDelete(position);
+                handleDelete(context, position);
             }
             @Override
             public void onChildDraw(@NonNull Canvas c, @NonNull RecyclerView recyclerView,
@@ -332,11 +404,20 @@ public class MainActivity extends AppCompatActivity {
             // 弹出确认对话框
             new AlertDialog.Builder(this)
                     .setTitle("清空消息")
-                    .setMessage("是否确定清空历史消息？")
+                    .setMessage("确定删除所有历史消息吗？")
                     .setPositiveButton("确定", (dialog, which) -> {
-                        messageList.clear();
-                        saveMessages();
-                        adapter.notifyDataSetChanged();
+
+                        new Thread(() -> {
+                            AppDatabase db = AppDatabase.getInstance(context);
+                            MessageDao dao = db.messageDao();
+                            dao.clear(); // ⭐ 先清数据库
+
+                            runOnUiThread(() -> {
+                                messageList.clear();        // ⭐ 再清内存
+                                adapter.notifyDataSetChanged(); // ⭐ UI更新必须主线程
+                                Toast.makeText(this, "已清空消息", Toast.LENGTH_SHORT).show();
+                            });
+                        }).start();
                     })
                     .setNegativeButton("取消", null) // 点击取消不做任何操作
                     .show();
@@ -362,10 +443,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadMessageList() {
-        // 加载已保存的消息
-        String json = sp.getString(AppConfig.preferencesMessages, "[]");
-        messageList = new Gson().fromJson(json, new TypeToken<List<MessageModel>>() {}.getType());
-        adapter.notifyDataSetChanged();
+
+        new Thread(() -> {  // ⭐ 在后台线程查询数据库
+            AppDatabase db = AppDatabase.getInstance(this);
+            List<MessageModel> list = db.messageDao().getAll(); // SELECT * FROM ...
+
+            runOnUiThread(() -> {   // ⭐ 查询完成后回到主线程更新 UI
+                messageList.clear();
+                messageList.addAll(list);
+                adapter.notifyDataSetChanged();
+            });
+
+        }).start();
     }
 
     private void showNoticeUrl(String token) {
@@ -397,11 +486,6 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, task.getException().getMessage(), Toast.LENGTH_LONG).show();
             }
         });
-    }
-
-    private void saveMessages() {
-        String json = new Gson().toJson(messageList);
-        sp.edit().putString(AppConfig.preferencesMessages, json).apply();
     }
 
     private void checkPermission() {
@@ -463,12 +547,19 @@ public class MainActivity extends AppCompatActivity {
             return new VH(v);
         }
 
+        @SuppressLint("SetTextI18n")
         @Override
         public void onBindViewHolder(@NonNull VH holder, int position) {
             MessageModel m = messageList.get(position);
             holder.title.setText(m.title);
             holder.body.setText(m.body);
-            holder.time.setText(m.sendTime + " → " + m.receivedTime);
+
+            Log.i(TAG, m.body + " Send: " + m.sendTimestamp + ", Received: " + m.receivedTimestamp);
+            if (m.receivedTimestamp - m.sendTimestamp < AppConfig.showReceivedTimeDelayMs) {
+                holder.time.setText(m.sendTime);
+            } else {
+                holder.time.setText(m.sendTime + " → " + m.receivedTime);
+            }
 
             // 点击整个条目显示详情
             holder.itemView.setOnClickListener(v -> {

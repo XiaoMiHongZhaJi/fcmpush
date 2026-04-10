@@ -145,21 +145,31 @@ public class MyFCMService extends FirebaseMessagingService {
     }
 
     private void saveMessage(String title, String body, String sendTime, String priority, String group) {
-        SharedPreferences sp = getSharedPreferences(AppConfig.preferencesName, MODE_PRIVATE);
-        String json = sp.getString(AppConfig.preferencesMessages, "[]");
-        Gson gson = new Gson();
-        List<MessageModel> list = gson.fromJson(json, new TypeToken<List<MessageModel>>() {
-        }.getType());
 
-        SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
-        String receivedTime = simpleDateFormat.format(new Date());
-        sendTime = simpleDateFormat.format(new Date(Long.parseLong(sendTime)));
+        AppDatabase db = AppDatabase.getInstance(this);
+        MessageDao dao = db.messageDao();
 
-        // 创建包含新字段的模型
-        MessageModel model = new MessageModel(title, body, sendTime, receivedTime, priority, group);
-        list.add(0, model);
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
 
-        sp.edit().putString(AppConfig.preferencesMessages, gson.toJson(list)).apply();
+        long sendTimestamp = Long.parseLong(sendTime);
+        String sendTimeFormatted = sdf.format(new Date(sendTimestamp));
+
+        long receivedTimestamp = System.currentTimeMillis();
+        String receivedTimeFormatted = sdf.format(new Date(receivedTimestamp));
+
+        MessageModel model = new MessageModel(
+                title,
+                body,
+                sendTimeFormatted,
+                receivedTimeFormatted,
+                sendTimestamp,
+                receivedTimestamp,
+                priority,
+                group
+        );
+
+        // Room 不允许主线程操作 → 建议新线程
+        new Thread(() -> dao.insert(model)).start();
     }
 
     @Override
