@@ -22,10 +22,11 @@ public class MessageModel {
 
     public String priority; // 优先级
     public String group;    // 分组
+    public String packageName;    // 包名（用于通知转发）
 
     public MessageModel(String title, String body, String sendTime, String receivedTime,
                         long sendTimestamp, long receivedTimestamp,
-                        String priority, String group) {
+                        String priority, String group, String packageName) {
         this.title = title;
         this.body = body;
         this.sendTime = sendTime;
@@ -34,5 +35,6 @@ public class MessageModel {
         this.receivedTimestamp = receivedTimestamp;
         this.priority = priority;
         this.group = group;
+        this.packageName = packageName;
     }
 }

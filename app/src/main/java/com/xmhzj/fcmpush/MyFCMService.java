@@ -15,8 +15,6 @@ import androidx.core.app.NotificationCompat;
 
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 
 import java.text.SimpleDateFormat;
 
@@ -25,7 +23,6 @@ import android.os.Looper;
 import android.util.Log;
 
 import java.util.Date;
-import java.util.List;
 import java.util.Locale;
 
 public class MyFCMService extends FirebaseMessagingService {
@@ -48,12 +45,13 @@ public class MyFCMService extends FirebaseMessagingService {
         String sendTime = remoteMessage.getData().getOrDefault("sendTime", "");
         String priority = remoteMessage.getData().getOrDefault("priority", "default");
         String groupKey = remoteMessage.getData().getOrDefault("group", "default");
+        String packageName = remoteMessage.getData().getOrDefault("packageName", "");
 
         // 2. 永久保存到本地
-        saveMessage(title, body, sendTime, priority, groupKey);
+        saveMessage(title, body, sendTime, priority, groupKey, packageName);
 
         // 2. 手动弹出通知（确保后台也能看到）
-        showNotification(title, body, priority, groupKey);
+        showNotification(title, body, priority, groupKey, packageName);
 
         // 3. 发广播通知界面刷新
         sendBroadcast(new Intent("com.xmhzj.NEW_MESSAGE"));
@@ -85,7 +83,7 @@ public class MyFCMService extends FirebaseMessagingService {
         sHandler.postDelayed(sExitRunnable, AppConfig.exitDelayMs);
     }
 
-    private void showNotification(String title, String body, String priority, String groupKey) {
+    private void showNotification(String title, String body, String priority, String groupKey, String packageName) {
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
         // A. 映射优先级到系统常量
@@ -120,6 +118,9 @@ public class MyFCMService extends FirebaseMessagingService {
         Intent intent = new Intent(this, MainActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, (int) System.currentTimeMillis(), intent, PendingIntent.FLAG_IMMUTABLE);
 
+        // D. 发送通知 (使用随机 ID 避免覆盖，除非你想让同组只显示一条)
+        int notificationId = (int) System.currentTimeMillis();
+
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
                 .setSmallIcon(R.drawable.ic_notification) // 这里必须使用那个纯色透明图标
                 .setContentTitle(title)
@@ -129,22 +130,32 @@ public class MyFCMService extends FirebaseMessagingService {
                 .setContentIntent(pi)
                 .setGroup(groupKey); // 【核心：设置系统分组】
 
-        // D. 发送通知 (使用随机 ID 避免覆盖，除非你想让同组只显示一条)
-        int notificationId = (int) System.currentTimeMillis();
+        if ("com.tencent.mm".equals(packageName)) {
+            Intent mmIntent = this.getPackageManager().getLaunchIntentForPackage("com.tencent.mm");
+
+            PendingIntent pendingIntent = PendingIntent.getActivity(this, notificationId, mmIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            builder.setSmallIcon(R.drawable.ic_notification_mm).setContentIntent(pendingIntent);
+        }
+
         nm.notify(notificationId, builder.build());
 
         // E. 【进阶】发送摘要通知（Summary）
         // 这一步是为了让 Android 系统更好地把该组消息聚合在一起
         NotificationCompat.Builder summaryBuilder = new NotificationCompat.Builder(this, channelId)
-                .setSmallIcon(android.R.drawable.ic_popup_reminder)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setGroup(groupKey)
                 .setGroupSummary(true) // 标记为该组的“摘要”
                 .setAutoCancel(true)
                 .setContentIntent(pi);
+
+        if ("com.tencent.mm".equals(packageName)) {
+            summaryBuilder.setSmallIcon(R.drawable.ic_notification_mm);
+        }
         nm.notify(groupKey.hashCode(), summaryBuilder.build());
     }
 
-    private void saveMessage(String title, String body, String sendTime, String priority, String group) {
+    private void saveMessage(String title, String body, String sendTime, String priority, String group, String packageName) {
 
         AppDatabase db = AppDatabase.getInstance(this);
         MessageDao dao = db.messageDao();
@@ -165,7 +176,8 @@ public class MyFCMService extends FirebaseMessagingService {
                 sendTimestamp,
                 receivedTimestamp,
                 priority,
-                group
+                group,
+                packageName
         );
 
         // Room 不允许主线程操作 → 建议新线程

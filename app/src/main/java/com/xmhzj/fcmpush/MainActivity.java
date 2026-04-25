@@ -23,6 +23,7 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -31,6 +32,7 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -133,7 +135,8 @@ public class MainActivity extends AppCompatActivity {
                     sendTimestamp,
                     receivedTimestamp,
                     old.priority,
-                    old.group
+                    old.group,
+                    ""
             );
 
             dao.insert(newModel);
@@ -551,8 +554,21 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onBindViewHolder(@NonNull VH holder, int position) {
             MessageModel m = messageList.get(position);
+            String packageName = m.packageName;
             holder.title.setText(m.title);
             holder.body.setText(m.body);
+
+            Drawable drawable;
+            if ("com.tencent.mm".equals(packageName)) {
+                drawable = ContextCompat.getDrawable(holder.itemView.getContext(), R.drawable.ic_notification_mm);
+                // ✅ 设置颜色 #2AAE67
+                DrawableCompat.setTint(drawable, Color.parseColor("#2AAE67"));
+            } else {
+                drawable = ContextCompat.getDrawable(holder.itemView.getContext(), R.drawable.ic_notification);
+                DrawableCompat.setTint(drawable, Color.parseColor("#666666"));
+            }
+
+            holder.icon.setImageDrawable(drawable);
 
             Log.i(TAG, m.body + " Send: " + m.sendTimestamp + ", Received: " + m.receivedTimestamp);
             if (m.receivedTimestamp - m.sendTimestamp < AppConfig.showReceivedTimeDelayMs) {
@@ -574,12 +590,14 @@ public class MainActivity extends AppCompatActivity {
 
         class VH extends RecyclerView.ViewHolder {
             TextView title, body, time;
+            ImageView icon;
 
             public VH(View v) {
                 super(v);
                 title = v.findViewById(R.id.itemTitle);
                 body = v.findViewById(R.id.itemBody);
                 time = v.findViewById(R.id.itemTime);
+                icon = v.findViewById(R.id.itemIcon);
             }
         }
     }
@@ -590,6 +608,10 @@ public class MainActivity extends AppCompatActivity {
         sb.append("【内容】").append(m.body).append("\n");
         sb.append("【发送时间】").append(m.sendTime).append("\n");
         sb.append("【接收时间】").append(m.receivedTime);
+        if (m.packageName != null && !m.packageName.equals("")) {
+            sb.append("\n");
+            sb.append("【包名】").append(m.packageName);
+        }
         if (m.group != null && !m.group.equals("default")) {
             sb.append("\n");
             sb.append("【分组】").append(m.group);
