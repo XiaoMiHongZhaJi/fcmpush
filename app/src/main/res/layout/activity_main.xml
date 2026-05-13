@@ -270,9 +270,12 @@
             android:layout_weight="10"
             android:layout_marginStart="8dp"
             android:layout_marginEnd="4dp"
-            android:hint="搜索内容"
+            android:hint="搜索标题或内容"
             android:textSize="14sp"
             android:drawableEnd="@drawable/ic_clear"
+            android:maxLines="1"
+            android:inputType="text"
+            android:imeOptions="actionSearch"
             android:drawablePadding="6dp"/>
 
         <!-- 日历图标 -->
@@ -290,7 +293,9 @@
                 android:id="@+id/ivCalendar"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:src="@drawable/ic_calendar"
+                android:src="@drawable/ic_calendar_default"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:alpha="100"
                 android:padding="4dp"
                 android:elevation="1dp"/>
 
@@ -299,9 +304,9 @@
                 android:id="@+id/tvCalendarDay"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="8dp"
                 android:gravity="center"
-                android:textSize="12sp"
+                android:textSize="10sp"
                 android:textStyle="bold"
                 android:textColor="#FF606060"
                 android:elevation="10dp"

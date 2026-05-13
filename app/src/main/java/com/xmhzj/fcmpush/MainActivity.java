@@ -22,6 +22,7 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -68,6 +69,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView etDate;
     private TextView tvCalendarDay;
     private FrameLayout flCalendar;
+    private ImageView ivCalendar;
     private ImageButton btnMenu;
     private List<MessageModel> filteredList = new ArrayList<>(); // 用于存储过滤后的数据
 
@@ -80,10 +82,6 @@ public class MainActivity extends AppCompatActivity {
         sp = getSharedPreferences(AppConfig.preferencesName, MODE_PRIVATE);
         initViews(this);
         checkPermission();
-
-        Calendar calendar = Calendar.getInstance();
-        int today = calendar.get(Calendar.DAY_OF_MONTH);
-        tvCalendarDay.setText(String.valueOf(today));
 
         boolean migrated = sp.getBoolean("old_data_migrated", false);
         if (!migrated) {
@@ -168,19 +166,21 @@ public class MainActivity extends AppCompatActivity {
 
         // 1. 备份数据用于撤销
         final MessageModel deletedMessage = filteredList.get(position);
-        final int deletedPosition = messageList.indexOf(deletedMessage);
+        final int deletedPositionFilteredList = filteredList.indexOf(deletedMessage);
+        final int deletedPositionMessageList = messageList.indexOf(deletedMessage);
 
         // 2. 从集合移除并通知适配器刷新
-        messageList.remove(deletedPosition);
+        filteredList.remove(deletedPositionFilteredList);
+        messageList.remove(deletedPositionMessageList);
         adapter.notifyItemRemoved(position);
 
         // 3. 弹出撤销提示
-        Snackbar snackbar = Snackbar.make(rvMessages, "已删除消息: " + deletedMessage.title, Snackbar.LENGTH_LONG);
+        Snackbar snackbar = Snackbar.make(rvMessages, String.format("已删除消息[%s]: %s", deletedMessage.id, deletedMessage.title), Snackbar.LENGTH_LONG);
         snackbar.setAction("撤销", v -> {
             // 点击撤销：恢复数据
-            messageList.add(deletedPosition, deletedMessage);
+            filteredList.add(deletedPositionFilteredList, deletedMessage);
+            messageList.add(deletedPositionMessageList, deletedMessage);
             adapter.notifyItemInserted(position);
-            rvMessages.scrollToPosition(position);
         });
 
         // 4. 监听消失：真正存盘
@@ -213,6 +213,7 @@ public class MainActivity extends AppCompatActivity {
         etDate = findViewById(R.id.etDate);
         tvCalendarDay = findViewById(R.id.tvCalendarDay);
         flCalendar = findViewById(R.id.flCalendar);
+        ivCalendar = findViewById(R.id.ivCalendar);
         btnMenu = findViewById(R.id.btnMenu);
 
         Drawable clear = ContextCompat.getDrawable(MainActivity.this, R.drawable.ic_clear);
@@ -266,6 +267,7 @@ public class MainActivity extends AppCompatActivity {
                 String selectedDate = String.format("%d-%02d-%02d", year1, month1 + 1, dayOfMonth);
                 etDate.setText(selectedDate);
                 tvCalendarDay.setText(String.valueOf(dayOfMonth));
+                ivCalendar.setImageDrawable(ContextCompat.getDrawable(context, R.drawable.ic_calendar));
                 performSearch(); // 选择日期后立即搜索
             }, year, month, day);
 
@@ -275,9 +277,8 @@ public class MainActivity extends AppCompatActivity {
                 String date = etDate.getText().toString();
                 if (!date.isEmpty()) {
                     etDate.setText(null);
-                    Calendar calendar = Calendar.getInstance();
-                    int today = calendar.get(Calendar.DAY_OF_MONTH);
-                    tvCalendarDay.setText(String.valueOf(today));
+                    tvCalendarDay.setText(null);
+                    ivCalendar.setImageDrawable(ContextCompat.getDrawable(context, R.drawable.ic_calendar_default));
                     performSearch(); // 清除日期后立即搜索
                     // 这里写你的逻辑
                     Toast.makeText(this, "已清除选择的日期", Toast.LENGTH_SHORT).show();
@@ -653,42 +654,31 @@ public class MainActivity extends AppCompatActivity {
                 EditText input = new EditText(this);
                 input.setHint("https://your_domain.com");
                 input.setText(currentUrl); // 显示当前地址
+                // 只能单行
+                input.setSingleLine(true);
+                // 回车键显示“完成”
+                input.setImeOptions(EditorInfo.IME_ACTION_DONE);
                 inputBuilder.setView(input);
-
                 inputBuilder.setPositiveButton("保存", null); // 先传 null，后面自己处理点击事件
                 inputBuilder.setNegativeButton("取消", null);
 
                 AlertDialog dialog = inputBuilder.create();
 
+                input.setOnEditorActionListener((v, actionId, event) -> {
+                    if (actionId == EditorInfo.IME_ACTION_DONE) {
+                        extracted(input);
+                        dialog.dismiss();
+                        return true;
+                    }
+                    return false;
+                });
+
                 dialog.setOnShowListener(dialogInterface -> {
                     Button btn = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
 
                     btn.setOnClickListener(v -> {
-                        String customUrl = input.getText().toString().trim();
-                        // 判空
-                        if (customUrl.isEmpty()) {
-                            input.setError("服务器地址不能为空");
-                            return;
-                        }
-                        // 自动补全 http://
-                        if (!customUrl.startsWith("http://") && !customUrl.startsWith("https://")) {
-                            customUrl = "http://" + customUrl;
-                        }
-                        // 去掉末尾的 /
-                        if (customUrl.endsWith("/")) {
-                            customUrl = customUrl.substring(0, customUrl.length() - 1);
-                        }
-                        // URL 格式校验
-                        boolean isValid = android.util.Patterns.WEB_URL.matcher(customUrl).matches();
-                        if (!isValid) {
-                            input.setError("请输入正确的服务器地址");
-                            return;
-                        }
-                        // 保存
-                        sp.edit().putString(AppConfig.preferencesApiUrl, customUrl).apply();
-                        Toast.makeText(this, "已设置自定义服务器地址", Toast.LENGTH_SHORT).show();
+                        extracted(input);
                         dialog.dismiss();
-                        refreshNoticeUrl(customUrl);
                     });
                 });
                 dialog.show();
@@ -706,6 +696,33 @@ public class MainActivity extends AppCompatActivity {
 
         builder.setNegativeButton("取消", null);
         builder.show();
+    }
+
+    private void extracted(EditText input) {
+        String customUrl = input.getText().toString().trim();
+        // 判空
+        if (customUrl.isEmpty()) {
+            input.setError("服务器地址不能为空");
+            return;
+        }
+        // 自动补全 http://
+        if (!customUrl.startsWith("http://") && !customUrl.startsWith("https://")) {
+            customUrl = "http://" + customUrl;
+        }
+        // 去掉末尾的 /
+        if (customUrl.endsWith("/")) {
+            customUrl = customUrl.substring(0, customUrl.length() - 1);
+        }
+        // URL 格式校验
+        boolean isValid = android.util.Patterns.WEB_URL.matcher(customUrl).matches();
+        if (!isValid) {
+            input.setError("请输入正确的服务器地址");
+            return;
+        }
+        // 保存
+        sp.edit().putString(AppConfig.preferencesApiUrl, customUrl).apply();
+        Toast.makeText(this, "已设置自定义服务器地址", Toast.LENGTH_SHORT).show();
+        refreshNoticeUrl(customUrl);
     }
 
     // 辅助方法：复制文本到剪贴板
