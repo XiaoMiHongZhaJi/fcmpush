@@ -4,6 +4,8 @@
 
 该项目允许用户在无需第三方推送平台的情况下, 通过自己的 Firebase 项目实现稳定的设备消息推送能力
 
+![Screenshot_fcmpush.jpg](Screenshot_fcmpush.jpg)
+
 ---
 
 # 🚀 功能介绍
