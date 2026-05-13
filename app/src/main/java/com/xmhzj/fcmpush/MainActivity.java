@@ -44,14 +44,10 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.snackbar.Snackbar;
 import com.google.firebase.messaging.FirebaseMessaging;
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
-import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -83,21 +79,10 @@ public class MainActivity extends AppCompatActivity {
         initViews(this);
         checkPermission();
 
-        boolean migrated = sp.getBoolean("old_data_migrated", false);
-        if (!migrated) {
-            new Thread(() -> {
-                migrateOldDataIfNeeded(this, sp);
-            }).start();
-
-            Toast.makeText(this, "数据迁移完成，请退出并重新打开", Toast.LENGTH_SHORT).show();
-        }
-
         String localToken = sp.getString(AppConfig.preferencesToken, null);
         if (localToken != null) {
             checkToken();
-            if (migrated) {
-                loadMessageList();
-            }
+            loadMessageList();
             showNoticeUrl(localToken);
         }
 
@@ -106,58 +91,6 @@ public class MainActivity extends AppCompatActivity {
             registerReceiver(messageReceiver, new IntentFilter("com.xmhzj.NEW_MESSAGE"),
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? RECEIVER_EXPORTED : 0);
         }
-    }
-
-    public void migrateOldDataIfNeeded(Context context, SharedPreferences sp) {
-
-        // 读取旧 JSON 数据
-        String json = sp.getString(AppConfig.preferencesMessages, "[]");
-        Gson gson = new Gson();
-
-        List<MessageModel> oldList = gson.fromJson(json, new TypeToken<List<MessageModel>>(){}.getType());
-        if (oldList == null || oldList.isEmpty()) {
-            sp.edit().putBoolean("old_data_migrated", true).apply();
-            return;
-        }
-
-        AppDatabase db = AppDatabase.getInstance(context);
-        MessageDao dao = db.messageDao();
-
-        for (MessageModel old : oldList) {
-
-            long sendTimestamp = 0;
-            long receivedTimestamp = 0;
-
-            // 如果旧版本没有时间戳，就尝试解析时间字符串
-            try {
-                sendTimestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                        .parse(old.sendTime).getTime();
-            } catch (Exception ignored){}
-
-            if (old.receivedTime != null) {
-                try {
-                    receivedTimestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                            .parse(old.receivedTime).getTime();
-                } catch (Exception ignored){}
-            }
-
-            MessageModel newModel = new MessageModel(
-                    old.title,
-                    old.body,
-                    old.sendTime,
-                    old.receivedTime,
-                    sendTimestamp,
-                    receivedTimestamp,
-                    old.priority,
-                    old.group,
-                    ""
-            );
-
-            dao.insert(newModel);
-        }
-
-        // 标记迁移完成
-        sp.edit().putBoolean("old_data_migrated", true).apply();
     }
 
     // 这是 Activity 里的方法
@@ -452,6 +385,8 @@ public class MainActivity extends AppCompatActivity {
             String savedToken = sp.getString(AppConfig.preferencesToken, "");
             if (savedToken.isEmpty()) {
                 doRegister(); // 无Token，执行注册逻辑
+            } else if (tvToken.getTag() == null || tvToken.getTag().toString().isEmpty()) {
+                doRegister(); // 已经注册了，但是没显示到界面上
             } else {
                 // 弹出确认对话框
                 new AlertDialog.Builder(this)
@@ -473,12 +408,12 @@ public class MainActivity extends AppCompatActivity {
                 // 展开
                 layoutMoreOptions.setVisibility(View.VISIBLE);
                 btnRegister.setVisibility(View.VISIBLE);
-                btnToggleOptions.setText("点击收起");
+                btnToggleOptions.setText("点击收起 ⬆️");
             } else {
                 // 收起
                 layoutMoreOptions.setVisibility(View.GONE);
                 btnRegister.setVisibility(View.GONE);
-                btnToggleOptions.setText("展开更多选项");
+                btnToggleOptions.setText("展开更多选项 ⬇️");
             }
         });
 

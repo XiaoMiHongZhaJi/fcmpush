@@ -33,7 +33,7 @@
                 android:layout_marginTop="8dp"
                 android:clickable="true"
                 android:focusable="false"
-                android:hint="点击注册获取 Token"
+                android:hint="请先点击「注册设备」获取Token"
                 android:padding="10dp"
                 android:textSize="12sp" />
 
@@ -43,7 +43,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="展开更多选项"
+                android:text="展开更多选项 ⬇️"
                 android:visibility="gone" />
 
             <!-- 新增：更多选项容器 (默认隐藏) -->
@@ -241,7 +241,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="获取注册 Token" />
+                android:text="注册设备" />
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 

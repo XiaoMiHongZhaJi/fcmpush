@@ -12,8 +12,6 @@ public class AppConfig {
     // 系统配置名称
     public static String preferencesToken = "token";
     // 系统配置名称
-    public static String preferencesMessages = "messages";
-    // 系统配置名称
     public static String preferencesApiUrl = "apiUrl";
     // 消息延迟时显示发送时间和接收时间
     public static long showReceivedTimeDelayMs = 5 * 1000;

@@ -27,8 +27,6 @@ import java.util.Locale;
 
 public class MyFCMService extends FirebaseMessagingService {
 
-    private static final String CHANNEL_ID = "fcm_default_channel";
-
     // 使用静态变量，确保多次消息触发时操作的是同一个计时器
     private static final Handler sHandler = new Handler(Looper.getMainLooper());
     private static Runnable sExitRunnable = null;
