@@ -68,3 +68,9 @@ dependencies {
 
     annotationProcessor libs.room.compiler
 }
+
+tasks.register("printVersionName") {
+    doLast {
+        println android.defaultConfig.versionName
+    }
+}
