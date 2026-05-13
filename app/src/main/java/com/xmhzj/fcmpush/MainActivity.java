@@ -2,6 +2,7 @@ package com.xmhzj.fcmpush;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.DatePickerDialog;
 import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -18,13 +19,16 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -44,13 +48,14 @@ import com.google.gson.reflect.TypeToken;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
     private TextView tvStatus, tvToken;
-    private Button btnRegister, btnClear, btnToggleOptions;
+    private Button btnRegister, btnToggleOptions;
     private LinearLayout layoutMoreOptions;
     private EditText etExtraInfo1, etExtraInfo2, etExtraInfo3;
     private RecyclerView rvMessages;
@@ -58,6 +63,13 @@ public class MainActivity extends AppCompatActivity {
     private List<MessageModel> messageList = new ArrayList<>();
     private SharedPreferences sp;
     private static final String TAG = "MAIN_DEBUG";
+    // 在 MainActivity 类顶部添加声明
+    private EditText etSearch;
+    private TextView etDate;
+    private TextView tvCalendarDay;
+    private FrameLayout flCalendar;
+    private ImageButton btnMenu;
+    private List<MessageModel> filteredList = new ArrayList<>(); // 用于存储过滤后的数据
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,6 +80,10 @@ public class MainActivity extends AppCompatActivity {
         sp = getSharedPreferences(AppConfig.preferencesName, MODE_PRIVATE);
         initViews(this);
         checkPermission();
+
+        Calendar calendar = Calendar.getInstance();
+        int today = calendar.get(Calendar.DAY_OF_MONTH);
+        tvCalendarDay.setText(String.valueOf(today));
 
         boolean migrated = sp.getBoolean("old_data_migrated", false);
         if (!migrated) {
@@ -151,11 +167,11 @@ public class MainActivity extends AppCompatActivity {
         if (position == RecyclerView.NO_POSITION) return;
 
         // 1. 备份数据用于撤销
-        final MessageModel deletedMessage = messageList.get(position);
-        final int deletedPosition = position;
+        final MessageModel deletedMessage = filteredList.get(position);
+        final int deletedPosition = messageList.indexOf(deletedMessage);
 
         // 2. 从集合移除并通知适配器刷新
-        messageList.remove(position);
+        messageList.remove(deletedPosition);
         adapter.notifyItemRemoved(position);
 
         // 3. 弹出撤销提示
@@ -163,8 +179,8 @@ public class MainActivity extends AppCompatActivity {
         snackbar.setAction("撤销", v -> {
             // 点击撤销：恢复数据
             messageList.add(deletedPosition, deletedMessage);
-            adapter.notifyItemInserted(deletedPosition);
-            rvMessages.scrollToPosition(deletedPosition);
+            adapter.notifyItemInserted(position);
+            rvMessages.scrollToPosition(position);
         });
 
         // 4. 监听消失：真正存盘
@@ -184,6 +200,7 @@ public class MainActivity extends AppCompatActivity {
         snackbar.show();
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private void initViews(Context context) {
         tvStatus = findViewById(R.id.tvStatus);
         tvToken = findViewById(R.id.tvToken);
@@ -191,7 +208,19 @@ public class MainActivity extends AppCompatActivity {
         btnToggleOptions = findViewById(R.id.btnToggleOptions);
         layoutMoreOptions = findViewById(R.id.layoutMoreOptions);
 
-        btnClear = findViewById(R.id.btnClear);
+        // 在 initViews() 方法中添加以下代码 (建议放在 loadMessageList() 调用之前)
+        etSearch = findViewById(R.id.etSearch);
+        etDate = findViewById(R.id.etDate);
+        tvCalendarDay = findViewById(R.id.tvCalendarDay);
+        flCalendar = findViewById(R.id.flCalendar);
+        btnMenu = findViewById(R.id.btnMenu);
+
+        Drawable clear = ContextCompat.getDrawable(MainActivity.this, R.drawable.ic_clear);
+        if (clear != null) {
+            clear.setAlpha(0);
+            etSearch.setCompoundDrawablesWithIntrinsicBounds(null, null, clear, null);
+        }
+
         rvMessages = findViewById(R.id.rvMessages);
 
         ImageButton btnCopyAction1 = findViewById(R.id.btnCopyAction1);
@@ -209,6 +238,140 @@ public class MainActivity extends AppCompatActivity {
         rvMessages.setLayoutManager(new LinearLayoutManager(this));
         adapter = new MessageAdapter();
         rvMessages.setAdapter(adapter);
+
+        // 日历图标点击事件
+        flCalendar.setOnClickListener(v -> {
+
+            flCalendar.animate().scaleX(0.9f).scaleY(0.9f).setDuration(80)
+                    .withEndAction(() -> flCalendar.animate().scaleX(1f).scaleY(1f).setDuration(80))
+                    .start();
+
+            // 获取当前已选择的日期
+            String currentDate = etDate.getText().toString();
+            int year = Calendar.getInstance().get(Calendar.YEAR);
+            int month = Calendar.getInstance().get(Calendar.MONTH);
+            int day = Calendar.getInstance().get(Calendar.DAY_OF_MONTH);
+
+            // 解析已选择的日期
+            if (!currentDate.isEmpty()) {
+                String[] parts = currentDate.split("-");
+                year = Integer.parseInt(parts[0]);
+                month = Integer.parseInt(parts[1]) - 1;
+                day = Integer.parseInt(parts[2]);
+            }
+
+            // 弹出 DatePickerDialog
+            DatePickerDialog dialog = new DatePickerDialog(this, (view, year1, month1, dayOfMonth) -> {
+                // 格式化为 yyyy-MM-dd
+                String selectedDate = String.format("%d-%02d-%02d", year1, month1 + 1, dayOfMonth);
+                etDate.setText(selectedDate);
+                tvCalendarDay.setText(String.valueOf(dayOfMonth));
+                performSearch(); // 选择日期后立即搜索
+            }, year, month, day);
+
+            // 点击“取消”按钮 或返回键触发
+            dialog.setOnCancelListener(dialogInterface -> {
+                // 用户取消选择
+                String date = etDate.getText().toString();
+                if (!date.isEmpty()) {
+                    etDate.setText(null);
+                    Calendar calendar = Calendar.getInstance();
+                    int today = calendar.get(Calendar.DAY_OF_MONTH);
+                    tvCalendarDay.setText(String.valueOf(today));
+                    performSearch(); // 清除日期后立即搜索
+                    // 这里写你的逻辑
+                    Toast.makeText(this, "已清除选择的日期", Toast.LENGTH_SHORT).show();
+                }
+            });
+
+            dialog.show();
+        });
+
+        // --- 2. 搜索逻辑 (内容 + 日期) ---
+        // 添加 TextWatcher 到 etSearch
+        etSearch.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+                performSearch();
+
+                Drawable clear = ContextCompat.getDrawable(MainActivity.this, R.drawable.ic_clear);
+
+                if (clear != null) {
+                    if (s.length() == 0) {
+                        clear.setAlpha(0);
+                    }
+                }
+                etSearch.setCompoundDrawablesWithIntrinsicBounds(null, null, clear, null);
+            }
+        });
+
+        etSearch.setOnTouchListener(new View.OnTouchListener() {
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+
+                if (event.getAction() == MotionEvent.ACTION_UP) {
+
+                    Drawable clear = etSearch.getCompoundDrawables()[2];
+                    if (clear == null) return false;
+
+                    int touchX = (int) event.getX();
+                    int width = etSearch.getWidth();
+
+                    int drawableWidth = clear.getBounds().width();
+
+                    // 判断是否点击在右侧 icon 区域
+                    if (touchX >= (width - etSearch.getPaddingRight() - drawableWidth)) {
+
+                        etSearch.setText(null);
+
+                        // 🔥 点击反馈（轻微缩放效果）
+                        etSearch.animate().scaleX(0.98f).scaleY(0.98f).setDuration(80)
+                                .withEndAction(() -> etSearch.animate().scaleX(1f).scaleY(1f).setDuration(80))
+                                .start();
+
+                        return true;
+                    }
+                }
+                return false;
+            }
+        });
+
+        // --- 3. 菜单逻辑 (3个点) ---
+        btnMenu.setOnClickListener(v -> {
+            PopupMenu popup = new PopupMenu(MainActivity.this, v);
+            popup.getMenu().add("清空消息列表");
+            popup.getMenu().add("服务器设置");
+            popup.setOnMenuItemClickListener(item -> {
+                if (item.getTitle().equals("清空消息列表")) {
+                    // 复用原有的清空逻辑
+                    new AlertDialog.Builder(this)
+                            .setTitle("清空消息")
+                            .setMessage("确定删除所有历史消息吗？")
+                            .setPositiveButton("确定", (dialog, which) -> {
+                                new Thread(() -> {
+                                    AppDatabase db = AppDatabase.getInstance(this);
+                                    MessageDao dao = db.messageDao();
+                                    dao.clear();
+                                    runOnUiThread(() -> {
+                                        messageList.clear();
+                                        filteredList.clear();
+                                        adapter.notifyDataSetChanged();
+                                        Toast.makeText(this, "已清空消息列表", Toast.LENGTH_SHORT).show();
+                                    });
+                                }).start();
+                            }).setNegativeButton("取消", null).show();
+                } else if (item.getTitle().equals("服务器设置")) {
+                    showServerSettingsDialog();
+                }
+                return true;
+            });
+            popup.show();
+        });
 
         // --- 在这里添加滑动删除绑定 ---
         ItemTouchHelper itemTouchHelper = new ItemTouchHelper(new ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT) {
@@ -292,7 +455,7 @@ public class MainActivity extends AppCompatActivity {
                 // 弹出确认对话框
                 new AlertDialog.Builder(this)
                         .setTitle("刷新 Token")
-                        .setMessage("是否确定要刷新 Token？旧的 Token 将被删除。")
+                        .setMessage("确定要刷新 Token 吗？旧的 Token 将失效。")
                         .setPositiveButton("确定", (dialog, which) -> {
                             FirebaseMessaging.getInstance().deleteToken().addOnCompleteListener(t -> {
                                 doRegister(); // 用户点击确定，执行注册逻辑
@@ -402,38 +565,147 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 清空按钮
-        btnClear.setOnClickListener(v -> {
-            // 弹出确认对话框
-            new AlertDialog.Builder(this)
-                    .setTitle("清空消息")
-                    .setMessage("确定删除所有历史消息吗？")
-                    .setPositiveButton("确定", (dialog, which) -> {
-
-                        new Thread(() -> {
-                            AppDatabase db = AppDatabase.getInstance(context);
-                            MessageDao dao = db.messageDao();
-                            dao.clear(); // ⭐ 先清数据库
-
-                            runOnUiThread(() -> {
-                                messageList.clear();        // ⭐ 再清内存
-                                adapter.notifyDataSetChanged(); // ⭐ UI更新必须主线程
-                                Toast.makeText(this, "已清空消息", Toast.LENGTH_SHORT).show();
-                            });
-                        }).start();
-                    })
-                    .setNegativeButton("取消", null) // 点击取消不做任何操作
-                    .show();
-        });
-
         // 复制 Token
         tvToken.setOnClickListener(v -> {
-            String token = tvToken.getText().toString();
-            if (token.length() > 10) {
-                copyToClipboard(token);
-                Toast.makeText(this, "Token 已复制", Toast.LENGTH_SHORT).show();
+            String token = tvToken.getTag().toString();
+            copyToClipboard(token);
+            Toast.makeText(this, "Token 已复制", Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    /**
+     * 执行搜索：根据内容和日期过滤列表
+     */
+    private void performSearch() {
+        String keyword = etSearch.getText().toString().toLowerCase();
+        String date = etDate.getText().toString();
+
+        // 清空过滤列表
+        filteredList.clear();
+
+        // 遍历原始数据
+        for (MessageModel model : messageList) {
+            // 检查内容
+            if (!keyword.isEmpty()) {
+                if (model.title != null && model.title.toLowerCase().contains(keyword)) {
+                    // match = true
+                } else if (model.body != null && model.body.toLowerCase().contains(keyword)) {
+                    // match = true
+                } else {
+                    continue;
+                }
+            }
+
+            // 检查日期 (格式: yyyy-MM-dd)
+            if (!date.isEmpty()) {
+                String sendTime = model.sendTime;
+                if (sendTime == null) {
+                    continue;
+                }
+                if (sendTime.length() < 10) {
+                    continue;
+                }
+                if (!date.equals(sendTime.substring(0, 10))) {
+                    continue;
+                }
+            }
+
+            filteredList.add(model);
+        }
+
+        adapter.notifyDataSetChanged();
+    }
+
+    /**
+     * 显示服务器设置对话框
+     */
+    private void showServerSettingsDialog() {
+        // 使用自定义布局或简单的单选列表
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("服务器设置");
+
+        // 服务器列表
+        String[] servers = AppConfig.fcmApiUrls;
+
+        // 默认选中当前 URL
+        int checkedItem = 0;
+        String currentUrl = sp.getString(AppConfig.preferencesApiUrl, servers[0]);
+        if (currentUrl.equals(servers[1])) {
+            checkedItem = 1;
+        } else {
+            checkedItem = 2;
+        }
+
+        // 使用单选按钮
+        builder.setSingleChoiceItems(servers, checkedItem, null);
+
+        // 设置确定按钮
+        builder.setPositiveButton("确定", (choiceDialog, which) -> {
+            // 获取选中的项
+            int selectedPosition = ((AlertDialog) choiceDialog).getListView().getCheckedItemPosition();
+            String server = servers[selectedPosition];
+
+            if (server.contains("自定义")) {
+                // 弹出输入框
+                AlertDialog.Builder inputBuilder = new AlertDialog.Builder(this);
+                inputBuilder.setTitle("请输入自定义服务器地址");
+
+                EditText input = new EditText(this);
+                input.setHint("https://your_domain.com");
+                input.setText(currentUrl); // 显示当前地址
+                inputBuilder.setView(input);
+
+                inputBuilder.setPositiveButton("保存", null); // 先传 null，后面自己处理点击事件
+                inputBuilder.setNegativeButton("取消", null);
+
+                AlertDialog dialog = inputBuilder.create();
+
+                dialog.setOnShowListener(dialogInterface -> {
+                    Button btn = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+
+                    btn.setOnClickListener(v -> {
+                        String customUrl = input.getText().toString().trim();
+                        // 判空
+                        if (customUrl.isEmpty()) {
+                            input.setError("服务器地址不能为空");
+                            return;
+                        }
+                        // 自动补全 http://
+                        if (!customUrl.startsWith("http://") && !customUrl.startsWith("https://")) {
+                            customUrl = "http://" + customUrl;
+                        }
+                        // 去掉末尾的 /
+                        if (customUrl.endsWith("/")) {
+                            customUrl = customUrl.substring(0, customUrl.length() - 1);
+                        }
+                        // URL 格式校验
+                        boolean isValid = android.util.Patterns.WEB_URL.matcher(customUrl).matches();
+                        if (!isValid) {
+                            input.setError("请输入正确的服务器地址");
+                            return;
+                        }
+                        // 保存
+                        sp.edit().putString(AppConfig.preferencesApiUrl, customUrl).apply();
+                        Toast.makeText(this, "已设置自定义服务器地址", Toast.LENGTH_SHORT).show();
+                        dialog.dismiss();
+                        refreshNoticeUrl(customUrl);
+                    });
+                });
+                dialog.show();
+            } else {
+                sp.edit().putString(AppConfig.preferencesApiUrl, server).apply();
+                refreshNoticeUrl(server);
+
+                if (server.contains("cyf.lol")) { // 选择了 cyf.lol
+                    Toast.makeText(this, "提示：该域名将于2027年2月失效", Toast.LENGTH_LONG).show();
+                } else if (server.contains("workers.dev")) { // 选择了 workers.dev
+                    Toast.makeText(this, "提示：该服务器需要代理", Toast.LENGTH_LONG).show();
+                }
             }
         });
+
+        builder.setNegativeButton("取消", null);
+        builder.show();
     }
 
     // 辅助方法：复制文本到剪贴板
@@ -454,28 +726,48 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {   // ⭐ 查询完成后回到主线程更新 UI
                 messageList.clear();
                 messageList.addAll(list);
-                adapter.notifyDataSetChanged();
+                // 不直接调用 adapter.notifyDataSetChanged()
+                // 而是调用 performSearch()，这样可以保留当前的搜索和日期过滤状态
+                performSearch();
             });
 
         }).start();
     }
 
     private void showNoticeUrl(String token) {
+
+        String apiUrl = sp.getString(AppConfig.preferencesApiUrl, AppConfig.fcmApiUrls[0]);
+
         tvStatus.setText("状态: 已注册    Token: (点击复制)");
-        tvToken.setText(token);
+        tvToken.setText(getHideToken(token));
+        tvToken.setTag(token);
         btnRegister.setText("重新注册 / 刷新 Token");
+        btnRegister.setTextColor(Color.parseColor("#FF6666"));
         btnRegister.setVisibility(View.GONE);      // 隐藏注册按钮
         btnToggleOptions.setVisibility(View.VISIBLE); // 显示展开更多按钮
 
         // 1. 显示缩略后的文字
-        etExtraInfo1.setText(AppConfig.fcmApiUrl + "/{token}/消息内容");
-        etExtraInfo2.setText(AppConfig.fcmApiUrl + "/{token}/消息标题/消息内容");
-        etExtraInfo3.setText(AppConfig.fcmApiUrl + "/{token}/消息标题/消息内容?group=test&priority=high");
+        etExtraInfo1.setText(apiUrl + "/{token}/消息内容");
+        etExtraInfo2.setText(apiUrl + "/{token}/消息标题/消息内容");
+        etExtraInfo3.setText(apiUrl + "/{token}/消息标题/消息内容?group=test&priority=high");
 
         // 2. 将完整的文字保存在 Tag 中（Tag 可以存储任何对象，非常适合存这种隐藏数据）
         etExtraInfo1.setTag(token);
         etExtraInfo2.setTag(token);
         etExtraInfo3.setTag(token);
+    }
+
+    private void refreshNoticeUrl(String apiUrl) {
+        etExtraInfo1.setText(apiUrl + "/{token}/消息内容");
+        etExtraInfo2.setText(apiUrl + "/{token}/消息标题/消息内容");
+        etExtraInfo3.setText(apiUrl + "/{token}/消息标题/消息内容?group=test&priority=high");
+    }
+
+    private String getHideToken(String token) {
+        if (token != null && token.length() > 15) {
+            return String.format("%s******%s (总长度: %s)", token.substring(0, 5), token.substring(token.length() - 5), token.length());
+        }
+        return token;
     }
 
     private void doRegister() {
@@ -553,7 +845,7 @@ public class MainActivity extends AppCompatActivity {
         @SuppressLint("SetTextI18n")
         @Override
         public void onBindViewHolder(@NonNull VH holder, int position) {
-            MessageModel m = messageList.get(position);
+            MessageModel m = filteredList.get(position);
             String packageName = m.packageName;
             holder.title.setText(m.title);
             holder.body.setText(m.body);
@@ -585,7 +877,7 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public int getItemCount() {
-            return messageList.size();
+            return filteredList.size();
         }
 
         class VH extends RecyclerView.ViewHolder {
